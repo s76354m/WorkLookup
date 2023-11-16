@@ -1,0 +1,74 @@
+#region Namespaces
+using System;
+using System.Data;
+using System.Net.Http;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
+using Microsoft.SqlServer.Dts.Runtime;
+using System.Windows.Forms;
+#endregion
+
+namespace ST_9e881fbd83fe4a2bb4a2ea261a395952 // Keep this value from the new package and do not change it
+{
+    [Microsoft.SqlServer.Dts.Tasks.ScriptTask.SSISScriptTaskEntryPointAttribute]
+    public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
+    {
+        public void Main()
+        {
+            string tenantId = (string)Dts.Variables["User::tenantId"].Value;
+            string clientId = (string)Dts.Variables["User::clientId"].Value;
+            string clientSecret = (string)Dts.Variables["User::clientSecret"].Value;
+            string resource = "https://graph.microsoft.com/";
+
+            try
+            {
+                string token = GetToken(tenantId, clientId, clientSecret, resource).Result;
+                //Store the token in a variable
+                Dts.Variables["User::Token"].Value = token;
+                //Display the token
+                //MessageBox.Show(token);
+                Dts.TaskResult = (int)ScriptResults.Success;
+            }
+            catch (Exception ex)
+            {
+                // Log the details of the exception and fail the task
+                Dts.Events.FireError(0, "Script Task Example", ex.Message + "\r\n" + ex.StackTrace, string.Empty, 0);
+                Dts.TaskResult = (int)ScriptResults.Failure;
+            }
+        }
+
+        public static async Task<string> GetToken(string tenantId, string clientId, string clientSecret, string resource)
+        {
+            string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/token";
+            using (var client = new HttpClient())
+            {
+                var content = new FormUrlEncodedContent(new[]
+               {
+                    new KeyValuePair<string, string>("grant_type", "client_credentials"),
+                    new KeyValuePair<string, string>("client_id", clientId),
+                    new KeyValuePair<string, string>("client_secret", clientSecret),
+                    new KeyValuePair<string, string>("resource", resource)
+                });
+
+                var result = await client.PostAsync(url, content);
+                string resultContent = await result.Content.ReadAsStringAsync();
+                // Check if the request was successful
+                if (!result.IsSuccessStatusCode)
+                {
+                    throw new Exception("Failed to get token: " + resultContent);
+                }
+                // Parse the JSON response and get the access token
+                var token = JObject.Parse(resultContent)["access_token"].ToString();
+
+                return token;
+            }
+        }
+
+        enum ScriptResults
+        {
+            Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
+            Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
+        };
+    }
+}
